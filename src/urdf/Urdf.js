@@ -26,6 +26,8 @@ ROS3D.Urdf = function(options) {
 
   THREE.Object3D.call(this);
 
+  var joints = urdfModel.joints;
+
   // load all models
   var links = urdfModel.links;
   for ( var l in links) {

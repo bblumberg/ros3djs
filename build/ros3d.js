@@ -46,6 +46,7 @@ ROS3D.INTERACTIVE_MARKER_VIEW_FACING = 2;
 // Collada loader types
 ROS3D.COLLADA_LOADER = 1;
 ROS3D.COLLADA_LOADER_2 = 2;
+ROS3D.STL_LOADER = 3;
 
 
 /**
@@ -1157,7 +1158,7 @@ ROS3D.InteractiveMarkerControl = function(options) {
   // frame to potential child Marker frames
   var localTfClient = new ROSLIB.TFClient({
     ros : handle.tfClient.ros,
-    fixedFrame : handle.message.header.frame_id,
+    fixedFrame : handle.message.header.frame_id
   });
 
   // create visuals (markers)
@@ -2383,6 +2384,12 @@ ROS3D.MeshResource = function(options) {
 
   var uri = path + resource;
   var fileType = uri.substr(-4).toLowerCase();
+  // change to load STL files in place of DAE files
+  if(loaderType === ROS3D.STL_LOADER)
+  {
+    fileType = '.stl';
+    uri = uri.replace('DAE', 'STL');
+  }
 
   // check the type
   var loader;
@@ -2549,6 +2556,8 @@ ROS3D.Urdf = function(options) {
 
   THREE.Object3D.call(this);
 
+  var joints = urdfModel.joints;
+  
   // load all models
   var links = urdfModel.links;
   for ( var l in links) {
@@ -2781,6 +2790,7 @@ ROS3D.Viewer = function(options) {
   var background = options.background || '#111111';
   var antialias = options.antialias;
   var intensity = options.intensity || 0.66;
+  var ambient =  options.ambient ||false;
   var cameraPosition = options.cameraPose || {
     x : 3,
     y : 3,
@@ -2813,7 +2823,10 @@ ROS3D.Viewer = function(options) {
   this.cameraControls.userZoomSpeed = 0.5;
 
   // lights
-  this.scene.add(new THREE.AmbientLight(0x555555));
+  if(ambient)
+  {
+    this.scene.add(new THREE.AmbientLight(0x555555));
+  }
   this.directionalLight = new THREE.DirectionalLight(0xffffff, intensity);
   this.scene.add(this.directionalLight);
 

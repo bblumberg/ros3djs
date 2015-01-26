@@ -27,6 +27,7 @@ ROS3D.Viewer = function(options) {
   var background = options.background || '#111111';
   var antialias = options.antialias;
   var intensity = options.intensity || 0.66;
+  var ambient =  options.ambient ||false;
   var cameraPosition = options.cameraPose || {
     x : 3,
     y : 3,
@@ -59,7 +60,10 @@ ROS3D.Viewer = function(options) {
   this.cameraControls.userZoomSpeed = 0.5;
 
   // lights
-  this.scene.add(new THREE.AmbientLight(0x555555));
+  if(ambient)
+  {
+    this.scene.add(new THREE.AmbientLight(0x555555));
+  }
   this.directionalLight = new THREE.DirectionalLight(0xffffff, intensity);
   this.scene.add(this.directionalLight);
 
