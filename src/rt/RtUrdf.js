@@ -44,6 +44,10 @@ ROS3D.RtUrdf = function(options) {
         // ignore mesh files which are not in Collada or STL format
         if (fileType === '.dae' || fileType === '.stl') {
           // create the model
+          if(loader === ROS3D.STL_LOADER)
+          {
+            uri = uri.replace('DAE', 'STL');
+          }
           var mesh = new ROS3D.MeshResource({
             path : path,
             resource : uri.substring(10),

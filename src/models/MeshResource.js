@@ -35,12 +35,6 @@ ROS3D.MeshResource = function(options) {
 
   var uri = path + resource;
   var fileType = uri.substr(-4).toLowerCase();
-  // change to load STL files in place of DAE files
-  if(loaderType === ROS3D.STL_LOADER)
-  {
-    fileType = '.stl';
-    uri = uri.replace('DAE', 'STL');
-  }
 
   // check the type
   var loader;
