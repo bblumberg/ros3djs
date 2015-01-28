@@ -1158,7 +1158,7 @@ ROS3D.InteractiveMarkerControl = function(options) {
   // frame to potential child Marker frames
   var localTfClient = new ROSLIB.TFClient({
     ros : handle.tfClient.ros,
-    fixedFrame : handle.message.header.frame_id
+    fixedFrame : handle.message.header.frame_id,
   });
 
   // create visuals (markers)
@@ -2529,6 +2529,355 @@ ROS3D.TriangleList.prototype.setColor = function(hex) {
 };
 
 /**
+ * Created by bblumberg on 1/28/15.
+ */
+/**
+ * JointNode is the ThreeJS representation of a revolute joint. It is composed of 2 Object3Ds. The parent Object3D
+ * represents the fixed pose of the joint relative to its
+ *
+ * @constructor
+ * @param options - object with following keys:
+ *
+ *  * name - the name of the joint
+ *  * origin - this is the fixed pose of the joint relative to its parent joint
+ *  * limit - can be empty, but conatins the limit information from the urdf (effort, lower, upper, velocity)
+ *  * axis - this is the axis of rotation of the joint
+ *  * object - the THREE 3D object to be rendered
+ */
+
+ROS3D.RtJointNode = function(options) {
+  options = options || {};
+  THREE.Object3D.call(this);
+  this.origin = options.origin || new ROSLIB.Pose();
+
+  this.activeJoint = new THREE.Object3D();
+  // set the axis
+  this.axis = new THREE.Vector3();
+  this.axis.set(options.axis.x,options.axis.y,options.axis.z );
+  if(this.axis.length)
+  {
+    this.axis.normalize();
+  }
+
+  this.name = options.name;
+
+  // add the active joint
+  this.add(this.activeJoint);
+
+  // set the initial pose
+  this.updatePose(this.origin);
+
+};
+ROS3D.RtJointNode.prototype.__proto__ = THREE.Object3D.prototype;
+
+/**
+ * Set the pose of the associated model.
+ *
+ * @param pose - the pose to update with
+ */
+ROS3D.RtJointNode.prototype.updatePose = function(pose) {
+  this.position.x = pose.position.x;
+  this.position.y = pose.position.y;
+  this.position.z = pose.position.z;
+  this.quaternion = new THREE.Quaternion(pose.orientation.x, pose.orientation.y,
+    pose.orientation.z, pose.orientation.w);
+  this.updateMatrixWorld(true);
+};
+
+ROS3D.RtJointNode.prototype.addLink = function(linkNode)
+{
+  this.activeJoint.add(linkNode);
+};
+
+ROS3D.RtJointNode.prototype.addChildJoint = function(jointNode)
+{
+  this.activeJoint.add(jointNode);
+};
+
+ROS3D.RtJointNode.prototype.updateJoint = function(ang)
+{
+  if(this.axis.length() === 1)
+  {
+    this.activeJoint.quaternion.setFromAxisAngle(this.axis, ang);
+  }
+};
+/**
+ * Created by bblumberg on 1/28/15.
+ */
+/**
+ * A LinkNode holds the mesh representing a link.
+ *
+ * @constructor
+ * @param options - object with following keys:
+ *
+ *  * frameID - the frame ID this object belongs to
+ *  * pose (optional) - the pose associated with this object
+ *  * object - the THREE 3D object to be rendered
+ */
+ROS3D.RtLinkNode = function(options) {
+  options = options || {};
+  THREE.Object3D.call(this);
+
+  this.name = options.frameID;
+  var object = options.object;
+  this.pose = options.pose;
+
+  this.updatePose(this.pose);
+
+  // add the model
+  this.add(object);
+};
+ROS3D.RtLinkNode.prototype.__proto__ = THREE.Object3D.prototype;
+
+ROS3D.RtLinkNode.prototype.updatePose = function(pose) {
+  this.position.x = pose.position.x;
+  this.position.y = pose.position.y;
+  this.position.z = pose.position.z;
+  this.quaternion = new THREE.Quaternion(pose.orientation.x, pose.orientation.y,
+    pose.orientation.z, pose.orientation.w);
+  this.updateMatrixWorld(true);
+};
+/**
+ * Created by bblumberg on 1/28/15.
+ */
+/**
+ * A URDF can be used to load a ROSLIB.UrdfModel and its associated models into a 3D object.
+ *
+ * @constructor
+ * @param options - object with following keys:
+ *
+ *   * urdfModel - the ROSLIB.UrdfModel to load
+ *   * tfClient - the TF client handle to use
+ *   * path (optional) - the base path to the associated Collada models that will be loaded
+ *   * tfPrefix (optional) - the TF prefix to used for multi-robots
+ *   * loader (optional) - the Collada loader to use (e.g., an instance of ROS3D.COLLADA_LOADER
+ *                         ROS3D.COLLADA_LOADER_2) -- defaults to ROS3D.COLLADA_LOADER_2
+ */
+ROS3D.RtUrdf = function(options) {
+  options = options || {};
+  var urdfModel = options.urdfModel;
+  var path = options.path || '/';
+  var loader = options.loader || ROS3D.COLLADA_LOADER_2;
+
+  THREE.Object3D.call(this);
+
+  this.robot = {joints: {}, links:{}};
+
+  // load all models
+  var links = urdfModel.links;
+  for (var l in links) {
+    var link = links[l];
+    if (link.visual && link.visual.geometry) {
+      // Save frameID
+      var frameID = link.name;
+      // Save color material
+      var colorMaterial = null;
+      if (link.visual.material && link.visual.material.color) {
+        var color = link.visual.material && link.visual.material.color;
+        colorMaterial = ROS3D.makeColorMaterial(color.r, color.g, color.b, color.a);
+      }
+      if (link.visual.geometry.type === ROSLIB.URDF_MESH) {
+        var uri = link.visual.geometry.filename;
+        var fileType = uri.substr(-4).toLowerCase();
+
+        // ignore mesh files which are not in Collada or STL format
+        if (fileType === '.dae' || fileType === '.stl') {
+          // create the model
+          var mesh = new ROS3D.MeshResource({
+            path : path,
+            resource : uri.substring(10),
+            loader : loader,
+            material : colorMaterial
+          });
+
+          // check for a scale
+          if(link.visual.geometry.scale) {
+            mesh.scale = new THREE.Vector3(
+              link.visual.geometry.scale.x,
+              link.visual.geometry.scale.y,
+              link.visual.geometry.scale.z
+            );
+          }
+
+          // create a scene node with the model
+          var sceneNode = new ROS3D.RtLinkNode({
+            frameID : frameID,
+            pose : link.visual.origin,
+            object : mesh
+          });
+          //this.add(sceneNode);
+          this.robot.links[sceneNode.name] = sceneNode;
+        } else {
+          console.warn('Could not load geometry mesh: '+uri);
+        }
+      } else {
+        if (!colorMaterial) {
+          colorMaterial = ROS3D.makeColorMaterial(0, 0, 0, 1);
+        }
+        var shapeMesh;
+        // Create a shape
+        switch (link.visual.geometry.type) {
+          case ROSLIB.URDF_BOX:
+            var dimension = link.visual.geometry.dimension;
+            var cube = new THREE.CubeGeometry(dimension.x, dimension.y, dimension.z);
+            shapeMesh = new THREE.Mesh(cube, colorMaterial);
+            break;
+          case ROSLIB.URDF_CYLINDER:
+            var radius = link.visual.geometry.radius;
+            var length = link.visual.geometry.length;
+            var cylinder = new THREE.CylinderGeometry(radius, radius, length, 16, 1, false);
+            shapeMesh = new THREE.Mesh(cylinder, colorMaterial);
+            shapeMesh.quaternion.setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI * 0.5);
+            break;
+          case ROSLIB.URDF_SPHERE:
+            var sphere = new THREE.SphereGeometry(link.visual.geometry.radius, 16);
+            shapeMesh = new THREE.Mesh(sphere, colorMaterial);
+            break;
+        }
+        // Create a scene node with the shape
+        var scene = new ROS3D.RtLinkNode({
+          name: frameID,
+          pose: link.visual.origin,
+          object: shapeMesh
+        });
+        this.robot.links[scene.name] = scene;
+      }
+    }
+  }
+  // now do the joints
+  var joints = urdfModel.joints;
+  for(var j in joints)
+  {
+    this.robot.joints[joints[j].name] = new ROS3D.RtJointNode(joints[j]);
+  }
+  this.buildRobot(urdfModel, this.robot);
+};
+ROS3D.RtUrdf.prototype.__proto__ = THREE.Object3D.prototype;
+
+ROS3D.RtUrdf.prototype.buildRobot = function(urdfModel)
+{
+  var joints = urdfModel.joints;
+  var links = urdfModel.links;
+  for(var l in links)
+  {
+    if(this.robot.links.hasOwnProperty(l))
+    {
+      this.add(this.robot.links[links[l].name]);
+    }
+  }
+  // iterate through the joints
+  for(var j in joints)
+  {
+    var child = links[joints[j].childLink];
+    var joint =  this.robot.joints.hasOwnProperty(joints[j].name)? this.robot.joints[joints[j].name] : null;
+    if(joint)
+    {
+      joint.addLink(this.robot.links[child.name]);
+      var parent = this.findParentJoint(urdfModel, joints[j]);
+      if(parent)
+      {
+        this.robot.joints[parent.name].addChildJoint(joint);
+      }
+      else
+      {
+        this.add(joint);
+      }
+    }
+    else
+    {
+      console.log('WARNING: robot.joints does not contain ', joints[j].name);
+    }
+  }
+};
+
+ROS3D.RtUrdf.prototype.findParentJoint = function(urdfModel, joint)
+{
+  var joints = urdfModel.joints;
+  for(var j in joints)
+  {
+    if(joints[j].childLink === joint.parentLink)
+    {
+      return joints[j];
+    }
+  }
+  return null;
+};
+
+
+/**
+ * Created by bblumberg on 1/28/15.
+ */
+/**
+ * A URDF client can be used to load a URDF and its associated models into a 3D object from the ROS
+ * parameter server.
+ *
+ * Emits the following events:
+ *
+ * * 'change' - emited after the URDF and its meshes have been loaded into the root object
+ *
+ * @constructor
+ * @param options - object with following keys:
+ *
+ *   * ros - the ROSLIB.Ros connection handle
+ *   * param (optional) - the paramter to load the URDF from, like 'robot_description'
+ *   * path (optional) - the base path to the associated Collada models that will be loaded
+ *   * rootObject (optional) - the root object to add this marker to
+  *   * loader (optional) - the Collada loader to use (e.g., an instance of ROS3D.COLLADA_LOADER
+ *                         ROS3D.COLLADA_LOADER_2) -- defaults to ROS3D.COLLADA_LOADER_2
+ */
+ROS3D.RtUrdfClient = function(options) {
+  var that = this;
+  options = options || {};
+  var ros = options.ros;
+  var param = options.param || 'robot_description';
+  this.path = options.path || '/';
+  this.rootObject = options.rootObject || new THREE.Object3D();
+  var loader = options.loader || ROS3D.COLLADA_LOADER_2;
+
+  // get the URDF value from ROS
+  var getParam = new ROSLIB.Param({
+    ros : ros,
+    name : param
+  });
+  getParam.get(function(string) {
+    // hand off the XML string to the URDF model
+    var urdfModel = new ROSLIB.UrdfModel({
+      string : string
+    });
+
+    that.rtUrdf = new ROS3D.RtUrdf({
+      urdfModel : urdfModel,
+      path : that.path,
+      loader : loader
+    });
+
+    // load all models
+    that.rootObject.add(that.rtUrdf);
+  });
+};
+
+ROS3D.RtUrdfClient.prototype.initializeJointStateListener = function(ros)
+{
+  this.listener = new ROSLIB.Topic({
+    ros : ros,
+    name : '/robot/joint_states',
+    messageType : 'sensor_msgs/JointState',
+    throttle_rate: 30,
+    queue_size: 1
+  });
+
+  this.listener.subscribe(function(message)
+  {
+//    var msgJson = JSON.stringify(message, null, ' ');
+//    console.log('Received message on ' + this.listener.name + ': ' + msgJson);
+    for(var j = 0; j < message.name.length; ++j)
+    {
+      this.rtUrdf.robot.joints[message.name[j]].updateJoint(message.position[j]);
+    }
+
+  }.bind(this));
+};
+/**
  * @author Jihoon Lee - jihoonlee.in@gmail.com
  * @author Russell Toris - rctoris@wpi.edu
  */
@@ -2556,8 +2905,6 @@ ROS3D.Urdf = function(options) {
 
   THREE.Object3D.call(this);
 
-  var joints = urdfModel.joints;
-  
   // load all models
   var links = urdfModel.links;
   for ( var l in links) {
