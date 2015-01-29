@@ -2839,7 +2839,7 @@ ROS3D.RtUrdfClient = function(options) {
   });
   getParam.get(function(string) {
     // hand off the XML string to the URDF model
-    var urdfModel = new ROSLIB.UrdfModel({
+    var urdfModel = new ROSLIB.RtUrdfModel({
       string : string
     });
 
